@@ -17,9 +17,38 @@ Engine_ReverbNoise : CroneEngine {
                 verb_mod_freq=2.0;
 
                 var input = SoundIn.ar([0, 1]);
-                var inputAmp = Amplitude.kr(Mix(input), 0.01, 0.1); // Track input amplitude
-                var noise = WhiteNoise.ar(noise_level * inputAmp); // Modulate noise by input amplitude
-                var mixed = input + noise;
+                var inputAmp = Amplitude.kr(Mix(input), 0.05, 0.3); // Slower tracking for smoother response
+                
+                // Create multiple layers of filtered noise
+                var noise1 = LPF.ar(WhiteNoise.ar(), 2000 + (inputAmp * 2000));
+                var noise2 = BPF.ar(PinkNoise.ar(), 800 + (inputAmp * 1200), 1.5);
+                var noise3 = HPF.ar(BrownNoise.ar(), 200 + (inputAmp * 400));
+                
+                // Gentle modulation sources
+                var lfo1 = SinOsc.kr(0.1 + (inputAmp * 0.3));
+                var lfo2 = LFTri.kr(0.05 + (inputAmp * 0.2));
+                
+                // Combine noise layers with modulation
+                var noiseSum = (
+                    (noise1 * 0.4 * (1 + (lfo1 * 0.2))) + 
+                    (noise2 * 0.35 * (1 + (lfo2 * 0.15))) + 
+                    (noise3 * 0.25)
+                ) * noise_level * inputAmp;
+                
+                // Soft saturation for warmth
+                var saturated = (input * (1.0 + (noise_level * 0.3))).tanh;
+                
+                // Blur the input with comb filtering
+                var comb1 = CombL.ar(input, 0.1, 0.06 + (lfo1 * 0.01), 0.2);
+                var comb2 = CombL.ar(input, 0.1, 0.08 + (lfo2 * 0.01), 0.3);
+                
+                var mixed = (
+                    (input * 0.7) + 
+                    (comb1 * 0.15) + 
+                    (comb2 * 0.15) + 
+                    noiseSum + 
+                    (saturated * 0.3)
+                );
                 
                 var reverb = FreeVerb.ar(
                     mixed,
@@ -40,9 +69,38 @@ Engine_ReverbNoise : CroneEngine {
                 verb_mod_freq=2.0;
 
                 var input = SoundIn.ar([0, 1]);
-                var inputAmp = Amplitude.kr(Mix(input), 0.01, 0.1); // Track input amplitude
-                var noise = WhiteNoise.ar(noise_level * inputAmp); // Modulate noise by input amplitude
-                var mixed = input + noise;
+                var inputAmp = Amplitude.kr(Mix(input), 0.05, 0.3); // Slower tracking for smoother response
+                
+                // Create multiple layers of filtered noise
+                var noise1 = LPF.ar(WhiteNoise.ar(), 2000 + (inputAmp * 2000));
+                var noise2 = BPF.ar(PinkNoise.ar(), 800 + (inputAmp * 1200), 1.5);
+                var noise3 = HPF.ar(BrownNoise.ar(), 200 + (inputAmp * 400));
+                
+                // Gentle modulation sources
+                var lfo1 = SinOsc.kr(0.1 + (inputAmp * 0.3));
+                var lfo2 = LFTri.kr(0.05 + (inputAmp * 0.2));
+                
+                // Combine noise layers with modulation
+                var noiseSum = (
+                    (noise1 * 0.4 * (1 + (lfo1 * 0.2))) + 
+                    (noise2 * 0.35 * (1 + (lfo2 * 0.15))) + 
+                    (noise3 * 0.25)
+                ) * noise_level * inputAmp;
+                
+                // Soft saturation for warmth
+                var saturated = (input * (1.0 + (noise_level * 0.3))).tanh;
+                
+                // Blur the input with comb filtering
+                var comb1 = CombL.ar(input, 0.1, 0.06 + (lfo1 * 0.01), 0.2);
+                var comb2 = CombL.ar(input, 0.1, 0.08 + (lfo2 * 0.01), 0.3);
+                
+                var mixed = (
+                    (input * 0.7) + 
+                    (comb1 * 0.15) + 
+                    (comb2 * 0.15) + 
+                    noiseSum + 
+                    (saturated * 0.3)
+                );
                 
                 var reverb = JPverb.ar(
                     mixed,
