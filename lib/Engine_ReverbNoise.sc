@@ -17,7 +17,7 @@ Engine_ReverbNoise : CroneEngine {
                 verb_mod_freq=2.0;
 
                 var input = SoundIn.ar([0, 1]);
-                var inputAmp = Amplitude.kr(Mix(input), 0.05, 0.3); // Slower tracking for smoother response
+                var inputAmp = Amplitude.kr(Mix(input), 0.05, 0.3);
                 
                 // Create multiple layers of filtered noise
                 var noise1 = LPF.ar(WhiteNoise.ar(), 2000 + (inputAmp * 2000));
@@ -49,15 +49,48 @@ Engine_ReverbNoise : CroneEngine {
                     noiseSum + 
                     (saturated * 0.3)
                 );
+
+                // Extended reverb processing for >100% mix
+                var extended_size = Select.kr(verb_mix > 1, [
+                    verb_size,
+                    verb_size * (1 + ((verb_mix - 1) * 2))
+                ]);
+
+                var extended_time = Select.kr(verb_mix > 1, [
+                    verb_time,
+                    verb_time * (1 + ((verb_mix - 1) * 3))
+                ]);
+
+                // Crystalline effect for >100%
+                var shimmer = PitchShift.ar(mixed, 0.2, 
+                    1 + (verb_mix > 1 * (verb_mix - 1) * 0.5), // Pitch shift up for crystalline effect
+                    0.01, 0.1
+                );
+                
+                var bright_filter = BHiShelf.ar(mixed, 2000, 1, 
+                    Select.kr(verb_mix > 1, [0, (verb_mix - 1) * 12])
+                );
+
+                var reverb_input = Select.ar(verb_mix > 1, [
+                    mixed,
+                    (mixed * 0.7) + (shimmer * 0.2) + (bright_filter * 0.1)
+                ]);
                 
                 var reverb = FreeVerb.ar(
-                    mixed,
+                    reverb_input,
                     mix: 1.0,
-                    room: verb_size,
-                    damp: verb_damp
+                    room: extended_size,
+                    damp: Select.kr(verb_mix > 1, [verb_damp, verb_damp * 0.5])
                 );
 
                 var sig = XFade2.ar(mixed, reverb, verb_mix * 2 - 1);
+                
+                // Add subtle pitch shifting for extreme reverb
+                sig = Select.ar(verb_mix > 1, [
+                    sig,
+                    sig + (PitchShift.ar(sig, 0.2, 1.5, 0.01, 0.1) * (verb_mix - 1))
+                ]);
+
                 Out.ar(out, sig * amp);
             }).add;
         }, {

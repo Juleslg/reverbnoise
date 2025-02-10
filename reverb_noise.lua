@@ -30,12 +30,26 @@ local alt = false
 local screen_dirty = true
 local wave_points = {}
 local wave_phase = 0
+local jitter_points = {}
+local last_input_level = 0
 
 function init()
   -- Audio setup
   audio.level_adc(1.0)
   audio.level_eng_cut(1.0)
   audio.level_dac(1.0)
+  
+  -- Initialize jitter points
+  for i=1,128 do
+    jitter_points[i] = 0
+  end
+  
+  -- Add input polling
+  poll = poll.set("amp_in_l", function(val) 
+    last_input_level = val
+  end)
+  poll.time = 1/30
+  poll:start()
   
   -- Parameters
   params:add_control("amp", "Volume", controlspec.new(0, 2.0, 'lin', 0, 1.0, ""))
@@ -50,7 +64,7 @@ function init()
     engine.noise(noise)
   end)
   
-  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 1.0, 'lin', 0, 0.0, ""))
+  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 2.0, 'lin', 0, 0.0, ""))
   params:set_action("verb_mix", function(x)
     verb_mix = x
     engine.verb_mix(verb_mix)
@@ -88,7 +102,7 @@ function init()
   -- Start UI refresh
   screen_refresh_metro = metro.init()
   screen_refresh_metro.event = function()
-    update_wave()
+    update_display()
     if screen_dirty then
       redraw()
       screen_dirty = false
@@ -97,12 +111,30 @@ function init()
   screen_refresh_metro:start(1/30)
 end
 
-function update_wave()
+function update_display()
+  -- Update wave phase
   wave_phase = (wave_phase + 0.02) % (math.pi * 2)
+  
+  -- Update jitter based on input level
+  local jitter_amount = last_input_level * 3
+  
+  -- Generate new jitter points
+  for i=1,128 do
+    jitter_points[i] = (math.random() - 0.5) * jitter_amount
+  end
+  
+  -- Calculate wave points with jitter
   for i=1,128 do
     local phase = wave_phase + (i/128) * math.pi * 2
-    wave_points[i] = math.sin(phase) * (5 + noise * 10) + math.sin(phase * 1.5) * (verb_mix * 8)
+    local base_wave = math.sin(phase) * (5 + noise * 10)
+    
+    -- Add crystalline effect above 100%
+    local crystal_amount = math.max(0, verb_mix - 1)
+    local crystal_wave = math.sin(phase * 2) * crystal_amount * 8
+    
+    wave_points[i] = base_wave + crystal_wave + jitter_points[i]
   end
+  
   screen_dirty = true
 end
 
@@ -152,7 +184,7 @@ function redraw()
   end
   screen.stroke()
   
-  -- Draw parameter values
+  -- Draw parameter values with extended range
   screen.level(15)
   screen.move(5, 50)
   screen.text(string.format("VOL:%.0f%%", amp * 100))
@@ -160,8 +192,14 @@ function redraw()
   screen.move(64, 50)
   screen.text_center(string.format("NOISE:%.0f%%", noise * 100))
   
+  -- Show reverb mix with extended range and crystalline indicator
   screen.move(123, 50)
-  screen.text_right(string.format("VERB:%.0f%%", verb_mix * 100))
+  if verb_mix <= 1 then
+    screen.text_right(string.format("VERB:%.0f%%", verb_mix * 100))
+  else
+    screen.level(15 + math.floor(math.sin(wave_phase * 4) * 3))
+    screen.text_right(string.format("VERB:%.0f%%*", verb_mix * 100))
+  end
   
   if alt then
     screen.level(5)
