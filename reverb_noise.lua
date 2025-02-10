@@ -33,11 +33,31 @@ local wave_phase = 0
 local jitter_points = {}
 local last_input_level = 0
 
+-- Rain state
+local raindrops = {}
+local MAX_DROPS = 40
+
+-- Raindrop class
+local Raindrop = {}
+function Raindrop.new(x)
+  return {
+    x = x or math.random(1, 128),
+    y = math.random(-10, 0),
+    speed = math.random(10, 20) / 10,
+    length = math.random(2, 4)
+  }
+end
+
 function init()
   -- Audio setup
   audio.level_adc(1.0)
   audio.level_eng_cut(1.0)
   audio.level_dac(1.0)
+  
+  -- Initialize raindrops
+  for i=1,MAX_DROPS do
+    raindrops[i] = Raindrop.new()
+  end
   
   -- Initialize jitter points
   for i=1,128 do
@@ -64,7 +84,7 @@ function init()
     engine.noise(noise)
   end)
   
-  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 2.0, 'lin', 0, 0.0, ""))
+  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 3.0, 'lin', 0, 0.0, ""))  -- Extended to 300%
   params:set_action("verb_mix", function(x)
     verb_mix = x
     engine.verb_mix(verb_mix)
@@ -135,6 +155,31 @@ function update_display()
     wave_points[i] = base_wave + crystal_wave + jitter_points[i]
   end
   
+  -- Update rain (when verb_mix > 2.0)
+  if verb_mix > 2.0 then
+    local rain_intensity = (verb_mix - 2.0) * MAX_DROPS
+    for i=1,MAX_DROPS do
+      -- Update existing raindrops
+      if raindrops[i] then
+        raindrops[i].y = raindrops[i].y + raindrops[i].speed
+        -- Reset raindrop if it's off screen
+        if raindrops[i].y > 64 then
+          if i <= rain_intensity then
+            raindrops[i] = Raindrop.new()
+          else
+            raindrops[i] = nil
+          end
+        end
+      -- Create new raindrops based on intensity
+      elseif i <= rain_intensity then
+        raindrops[i] = Raindrop.new()
+      end
+    end
+  else
+    -- Clear raindrops when verb_mix <= 2.0
+    raindrops = {}
+  end
+  
   screen_dirty = true
 end
 
@@ -184,6 +229,18 @@ function redraw()
   end
   screen.stroke()
   
+  -- Draw rain when verb_mix > 2.0
+  if verb_mix > 2.0 then
+    screen.level(math.floor(15 + math.sin(wave_phase * 4) * 3))
+    for _, drop in pairs(raindrops) do
+      if drop then
+        screen.move(drop.x, drop.y)
+        screen.line(drop.x, drop.y + drop.length)
+        screen.stroke()
+      end
+    end
+  end
+  
   -- Draw parameter values with extended range
   screen.level(15)
   screen.move(5, 50)
@@ -196,9 +253,12 @@ function redraw()
   screen.move(123, 50)
   if verb_mix <= 1 then
     screen.text_right(string.format("VERB:%.0f%%", verb_mix * 100))
-  else
+  elseif verb_mix <= 2 then
     screen.level(15 + math.floor(math.sin(wave_phase * 4) * 3))
     screen.text_right(string.format("VERB:%.0f%%*", verb_mix * 100))
+  else
+    screen.level(15 + math.floor(math.sin(wave_phase * 8) * 3))
+    screen.text_right(string.format("VERB:%.0f%%**", verb_mix * 100))
   end
   
   if alt then

@@ -50,25 +50,39 @@ Engine_ReverbNoise : CroneEngine {
                     (saturated * 0.3)
                 );
 
-                // Extended reverb processing for >100% mix
-                var extended_size = Select.kr(verb_mix > 1, [
-                    verb_size,
-                    verb_size * (1 + ((verb_mix - 1) * 2))
+                // Extended reverb processing for >100% and >200%
+                var extended_size = Select.kr(verb_mix > 2, [
+                    Select.kr(verb_mix > 1, [
+                        verb_size,
+                        verb_size * (1 + ((verb_mix - 1) * 2))
+                    ]),
+                    verb_size * (3 + ((verb_mix - 2) * 4)) // Triple size and continue growing
                 ]);
 
-                var extended_time = Select.kr(verb_mix > 1, [
-                    verb_time,
-                    verb_time * (1 + ((verb_mix - 1) * 3))
+                var extended_time = Select.kr(verb_mix > 2, [
+                    Select.kr(verb_mix > 1, [
+                        verb_time,
+                        verb_time * (1 + ((verb_mix - 1) * 3))
+                    ]),
+                    verb_time * (4 + ((verb_mix - 2) * 5)) // Quadruple time and continue growing
                 ]);
 
-                // Crystalline effect for >100%
+                // Crystalline effect with increased intensity above 200%
+                var shimmer_amount = Select.kr(verb_mix > 2, [
+                    verb_mix > 1 * (verb_mix - 1) * 0.5,
+                    (verb_mix - 1) * 1.5  // More intense shimmer
+                ]);
+                
                 var shimmer = PitchShift.ar(mixed, 0.2, 
-                    1 + (verb_mix > 1 * (verb_mix - 1) * 0.5), // Pitch shift up for crystalline effect
+                    1 + shimmer_amount,
                     0.01, 0.1
                 );
                 
                 var bright_filter = BHiShelf.ar(mixed, 2000, 1, 
-                    Select.kr(verb_mix > 1, [0, (verb_mix - 1) * 12])
+                    Select.kr(verb_mix > 2, [
+                        Select.kr(verb_mix > 1, [0, (verb_mix - 1) * 12]),
+                        (verb_mix - 1) * 24  // Double brightness boost
+                    ])
                 );
 
                 var reverb_input = Select.ar(verb_mix > 1, [
@@ -80,15 +94,22 @@ Engine_ReverbNoise : CroneEngine {
                     reverb_input,
                     mix: 1.0,
                     room: extended_size,
-                    damp: Select.kr(verb_mix > 1, [verb_damp, verb_damp * 0.5])
+                    damp: Select.kr(verb_mix > 2, [
+                        Select.kr(verb_mix > 1, [verb_damp, verb_damp * 0.5]),
+                        verb_damp * 0.25  // Even less damping for extreme reverb
+                    ])
                 );
 
                 var sig = XFade2.ar(mixed, reverb, verb_mix * 2 - 1);
                 
-                // Add subtle pitch shifting for extreme reverb
-                sig = Select.ar(verb_mix > 1, [
-                    sig,
-                    sig + (PitchShift.ar(sig, 0.2, 1.5, 0.01, 0.1) * (verb_mix - 1))
+                // Add more intense pitch shifting for extreme reverb
+                sig = Select.ar(verb_mix > 2, [
+                    Select.ar(verb_mix > 1, [
+                        sig,
+                        sig + (PitchShift.ar(sig, 0.2, 1.5, 0.01, 0.1) * (verb_mix - 1))
+                    ]),
+                    sig + (PitchShift.ar(sig, 0.2, 2.0, 0.01, 0.1) * (verb_mix - 1)) +
+                    (PitchShift.ar(sig, 0.2, 3.0, 0.01, 0.1) * (verb_mix - 2))
                 ]);
 
                 Out.ar(out, sig * amp);
