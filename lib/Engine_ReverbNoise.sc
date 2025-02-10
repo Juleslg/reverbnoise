@@ -17,7 +17,8 @@ Engine_ReverbNoise : CroneEngine {
                 verb_mod_freq=2.0;
 
                 var input = SoundIn.ar([0, 1]);
-                var noise = WhiteNoise.ar(noise_level);
+                var inputAmp = Amplitude.kr(Mix(input), 0.01, 0.1); // Track input amplitude
+                var noise = WhiteNoise.ar(noise_level * inputAmp); // Modulate noise by input amplitude
                 var mixed = input + noise;
                 
                 var reverb = FreeVerb.ar(
@@ -39,7 +40,8 @@ Engine_ReverbNoise : CroneEngine {
                 verb_mod_freq=2.0;
 
                 var input = SoundIn.ar([0, 1]);
-                var noise = WhiteNoise.ar(noise_level);
+                var inputAmp = Amplitude.kr(Mix(input), 0.01, 0.1); // Track input amplitude
+                var noise = WhiteNoise.ar(noise_level * inputAmp); // Modulate noise by input amplitude
                 var mixed = input + noise;
                 
                 var reverb = JPverb.ar(
