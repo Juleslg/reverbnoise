@@ -97,6 +97,20 @@ function init()
   poll.time = 1/30
   poll:start()
   
+  -- Initialize screen refresh metro
+  if screen_refresh_metro then
+    screen_refresh_metro:stop()
+  end
+  screen_refresh_metro = metro.init()
+  screen_refresh_metro.event = function()
+    update_display()
+    if screen_dirty then
+      redraw()
+      screen_dirty = false
+    end
+  end
+  screen_refresh_metro:start(1/30)
+  
   -- Parameters
   params:add_control("amp", "Volume", controlspec.new(0, 2.0, 'lin', 0, 1.0, ""))
   params:set_action("amp", function(x) 
@@ -144,17 +158,6 @@ function init()
   for i=1,128 do
     wave_points[i] = 0
   end
-  
-  -- Start UI refresh
-  screen_refresh_metro = metro.init()
-  screen_refresh_metro.event = function()
-    update_display()
-    if screen_dirty then
-      redraw()
-      screen_dirty = false
-    end
-  end
-  screen_refresh_metro:start(1/30)
 end
 
 function update_display()
@@ -316,7 +319,11 @@ function redraw()
 end
 
 function cleanup()
+  if poll then
+    poll:stop()
+  end
   if screen_refresh_metro then
     screen_refresh_metro:stop()
+    screen_refresh_metro = nil
   end
 end 
