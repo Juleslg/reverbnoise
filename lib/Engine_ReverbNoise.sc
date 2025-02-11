@@ -10,7 +10,7 @@ Engine_ReverbNoise : CroneEngine {
         if(not('JPverb'.asClass.notNil), {
             "WARNING: JPverb not found, using FreeVerb instead".postln;
             SynthDef(\reverbNoise, {
-                arg in, out, dry_wet=0.5, noise_level=0.0,
+                arg in, out, amp=1.0, noise_level=0.0,
                 verb_mix=0.0, verb_time=2.0,
                 verb_damp=0.0, verb_size=1.0,
                 verb_diff=0.707, verb_mod_depth=0.1,
@@ -113,14 +113,11 @@ Engine_ReverbNoise : CroneEngine {
                     (PitchShift.ar(sig, 0.2, 4.0, 0.01, 0.1) * (verb_mix - 2))
                 ]);
 
-                // Final dry/wet mix
-                var dry = input;
-                var wet = sig;
-                Out.ar(out, XFade2.ar(dry, wet, dry_wet * 2 - 1));
+                Out.ar(out, sig * amp);
             }).add;
         }, {
             SynthDef(\reverbNoise, {
-                arg in, out, dry_wet=0.5, noise_level=0.0,
+                arg in, out, amp=1.0, noise_level=0.0,
                 verb_mix=0.0, verb_time=2.0,
                 verb_damp=0.0, verb_size=1.0,
                 verb_diff=0.707, verb_mod_depth=0.1,
@@ -191,11 +188,7 @@ Engine_ReverbNoise : CroneEngine {
                 );
 
                 var sig = XFade2.ar(mixed, reverb, verb_mix * 2 - 1);
-
-                // Final dry/wet mix
-                var dry = input;
-                var wet = sig;
-                Out.ar(out, XFade2.ar(dry, wet, dry_wet * 2 - 1));
+                Out.ar(out, sig * amp);
             }).add;
         });
 
@@ -203,11 +196,11 @@ Engine_ReverbNoise : CroneEngine {
 
         synth = Synth.new(\reverbNoise, [
             \out, context.out_b.index,
-            \dry_wet, 0.5
+            \amp, 1.0
         ], context.xg);
 
-        this.addCommand("dry_wet", "f", { arg msg;
-            synth.set(\dry_wet, msg[1]);
+        this.addCommand("amp", "f", { arg msg;
+            synth.set(\amp, msg[1]);
         });
 
         this.addCommand("noise", "f", { arg msg;

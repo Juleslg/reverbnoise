@@ -2,7 +2,7 @@
 -- Live audio processing with
 -- reverb and noise blend
 --
--- E1 - dry/wet mix
+-- E1 - volume
 -- E2 - noise level
 -- E3 - reverb mix
 -- K2 + E2 - reverb time
@@ -16,7 +16,7 @@ local UI = require 'ui'
 local util = require 'util'
 
 -- State variables
-local dry_wet = 0.5
+local amp = 1.0
 local noise = 0.0
 local verb_mix = 0.0
 local verb_time = 2.0
@@ -76,10 +76,10 @@ function init()
   poll:start()
   
   -- Parameters
-  params:add_control("dry_wet", "Dry/Wet", controlspec.new(0, 1.0, 'lin', 0, 0.5, ""))
-  params:set_action("dry_wet", function(x) 
-    dry_wet = x
-    engine.dry_wet(dry_wet)
+  params:add_control("amp", "Volume", controlspec.new(0, 2.0, 'lin', 0, 1.0, ""))
+  params:set_action("amp", function(x) 
+    amp = x
+    engine.amp(amp)
   end)
   
   params:add_control("noise", "Noise", controlspec.new(0, 1.0, 'lin', 0, 0.0, ""))
@@ -206,7 +206,7 @@ end
 
 function enc(n,d)
   if n == 1 then
-    params:delta("dry_wet", d)
+    params:delta("amp", d)
   elseif n == 2 then
     if alt then
       params:delta("verb_time", d)
@@ -263,7 +263,7 @@ function redraw()
   -- Draw parameter values with extended range
   screen.level(15)
   screen.move(5, 50)
-  screen.text(string.format("D/W:%.0f%%", dry_wet * 100))
+  screen.text(string.format("VOL:%.0f%%", amp * 100))
   
   screen.move(64, 50)
   screen.text_center(string.format("NOISE:%.0f%%", noise * 100))
