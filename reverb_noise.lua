@@ -52,6 +52,28 @@ function Raindrop.new(x)
   }
 end
 
+-- Add new state variables at the top with other state variables
+local rotation = 0
+local planet_radius = 15
+local ring_radiuses = {24, 32, 40}  -- Volume, Noise, Reverb
+local perspective_angle = 0.6  -- Controls the "tilt" of the rings
+
+function calculate_ellipse_points(radius, rotation, num_points)
+  local points = {}
+  for i = 1, num_points do
+    local angle = (i / num_points) * math.pi * 2
+    local x = radius * math.cos(angle)
+    local y = radius * math.sin(angle) * perspective_angle
+    
+    -- Rotate points
+    local rotated_x = x * math.cos(rotation) - y * math.sin(rotation)
+    local rotated_y = x * math.sin(rotation) + y * math.cos(rotation)
+    
+    points[i] = {x = rotated_x + 64, y = rotated_y + 32}  -- Center on screen
+  end
+  return points
+end
+
 function init()
   -- Audio setup
   audio.level_adc(1.0)
@@ -136,43 +158,33 @@ function init()
 end
 
 function update_display()
-  -- Update wave phase
+  -- Update rotation
+  rotation = (rotation + 0.01) % (math.pi * 2)
+  
+  -- Update wave phase for planet vibration
   wave_phase = (wave_phase + 0.02) % (math.pi * 2)
   
   -- Update jitter based on input level
-  local jitter_amount = last_input_level * 3
+  local jitter_amount = last_input_level * 5
   
-  -- Generate new jitter points
+  -- Generate new jitter points for planet surface
   for i=1,128 do
     jitter_points[i] = (math.random() - 0.5) * jitter_amount
   end
   
-  -- Calculate wave points with jitter
-  for i=1,128 do
-    local phase = wave_phase + (i/128) * math.pi * 2
-    local base_wave = math.sin(phase) * (5 + noise * 10)
-    
-    -- Add crystalline effect above 100%
-    local crystal_amount = math.max(0, verb_mix - 1)
-    local crystal_wave = math.sin(phase * 2) * crystal_amount * 8
-    
-    wave_points[i] = base_wave + crystal_wave + jitter_points[i]
-  end
-  
   -- Update rain (when verb_mix > 2.0)
   if verb_mix > 2.0 then
-    local rain_intensity = (verb_mix - 2.0) * MAX_DROPS / 4  -- Adjusted for 600% range
+    local rain_intensity = (verb_mix - 2.0) * MAX_DROPS / 4
     for i=1,MAX_DROPS do
-      -- Update existing raindrops
       if raindrops[i] then
-        -- Store trail
-        table.insert(raindrops[i].trail, 1, {x = raindrops[i].x, y = raindrops[i].y})
+        -- Store trail with rotation
+        local rotated_x = raindrops[i].x * math.cos(rotation) - raindrops[i].y * math.sin(rotation)
+        table.insert(raindrops[i].trail, 1, {x = rotated_x, y = raindrops[i].y})
         if #raindrops[i].trail > TRAIL_LENGTH then
           table.remove(raindrops[i].trail)
         end
         
         raindrops[i].y = raindrops[i].y + raindrops[i].speed
-        -- Reset raindrop if it's off screen
         if raindrops[i].y > 64 then
           if i <= rain_intensity then
             raindrops[i] = Raindrop.new()
@@ -180,13 +192,11 @@ function update_display()
             raindrops[i] = nil
           end
         end
-      -- Create new raindrops based on intensity
       elseif i <= rain_intensity then
         raindrops[i] = Raindrop.new()
       end
     end
   else
-    -- Clear raindrops when verb_mix <= 2.0
     raindrops = {}
   end
   
@@ -226,16 +236,64 @@ end
 function redraw()
   screen.clear()
   
-  -- Draw title
-  screen.level(15)
-  screen.move(64, 8)
-  screen.text_center("reverb noise")
+  -- Draw the planet
+  local planet_points = 32
+  local vibration_scale = 3 + (last_input_level * 5)
+  for i = 1, planet_points do
+    local angle = (i / planet_points) * math.pi * 2
+    local next_angle = ((i + 1) / planet_points) * math.pi * 2
+    
+    -- Add vibration to radius
+    local radius_mod = math.sin(wave_phase + angle * 3) * vibration_scale
+    local next_radius_mod = math.sin(wave_phase + next_angle * 3) * vibration_scale
+    
+    local x1 = math.cos(angle) * (planet_radius + radius_mod)
+    local y1 = math.sin(angle) * (planet_radius + radius_mod) * perspective_angle
+    local x2 = math.cos(next_angle) * (planet_radius + next_radius_mod)
+    local y2 = math.sin(next_angle) * (planet_radius + next_radius_mod) * perspective_angle
+    
+    -- Rotate points
+    local rx1 = x1 * math.cos(rotation) - y1 * math.sin(rotation)
+    local ry1 = x1 * math.sin(rotation) + y1 * math.cos(rotation)
+    local rx2 = x2 * math.cos(rotation) - y2 * math.sin(rotation)
+    local ry2 = x2 * math.sin(rotation) + y2 * math.cos(rotation)
+    
+    screen.level(15)
+    screen.move(rx1 + 64, ry1 + 32)
+    screen.line(rx2 + 64, ry2 + 32)
+    screen.stroke()
+  end
   
-  -- Draw wave visualization
-  screen.level(3)
-  for i=1,127 do
-    screen.move(i, 32 + wave_points[i])
-    screen.line(i+1, 32 + wave_points[i+1])
+  -- Draw the rings with varying brightness based on their values
+  -- Volume ring
+  local volume_points = calculate_ellipse_points(ring_radiuses[1], rotation, 64)
+  screen.level(math.floor(amp * 15))
+  for i = 1, #volume_points - 1 do
+    screen.move(volume_points[i].x, volume_points[i].y)
+    screen.line(volume_points[i + 1].x, volume_points[i + 1].y)
+  end
+  screen.stroke()
+  
+  -- Noise ring
+  local noise_points = calculate_ellipse_points(ring_radiuses[2], rotation, 64)
+  screen.level(math.floor(noise * 15))
+  for i = 1, #noise_points - 1 do
+    screen.move(noise_points[i].x, noise_points[i].y)
+    screen.line(noise_points[i + 1].x, noise_points[i + 1].y)
+  end
+  screen.stroke()
+  
+  -- Reverb ring (with potential crystalline effect)
+  local reverb_points = calculate_ellipse_points(ring_radiuses[3], rotation, 64)
+  local reverb_brightness = math.floor(verb_mix * 15 / 6)  -- Scale for 600% range
+  if verb_mix > 2.0 then
+    screen.level(reverb_brightness + math.floor(math.sin(wave_phase * 8) * 3))
+  else
+    screen.level(reverb_brightness)
+  end
+  for i = 1, #reverb_points - 1 do
+    screen.move(reverb_points[i].x, reverb_points[i].y)
+    screen.line(reverb_points[i + 1].x, reverb_points[i + 1].y)
   end
   screen.stroke()
   
@@ -243,7 +301,6 @@ function redraw()
   if verb_mix > 2.0 then
     for _, drop in pairs(raindrops) do
       if drop then
-        -- Draw trails with decreasing brightness
         for i, pos in ipairs(drop.trail) do
           local trail_brightness = math.floor(drop.brightness * (1 - i/TRAIL_LENGTH))
           screen.level(trail_brightness)
@@ -251,39 +308,8 @@ function redraw()
           screen.line(pos.x, pos.y + drop.length)
           screen.stroke()
         end
-        -- Draw current raindrop
-        screen.level(drop.brightness)
-        screen.move(drop.x, drop.y)
-        screen.line(drop.x, drop.y + drop.length)
-        screen.stroke()
       end
     end
-  end
-  
-  -- Draw parameter values with extended range
-  screen.level(15)
-  screen.move(5, 50)
-  screen.text(string.format("VOL:%.0f%%", amp * 100))
-  
-  screen.move(64, 50)
-  screen.text_center(string.format("NOISE:%.0f%%", noise * 100))
-  
-  -- Show reverb mix with extended range and crystalline indicator
-  screen.move(123, 50)
-  if verb_mix <= 1 then
-    screen.text_right(string.format("VERB:%.0f%%", verb_mix * 100))
-  elseif verb_mix <= 2 then
-    screen.level(15 + math.floor(math.sin(wave_phase * 4) * 3))
-    screen.text_right(string.format("VERB:%.0f%%*", verb_mix * 100))
-  else
-    screen.level(15 + math.floor(math.sin(wave_phase * 8) * 3))
-    screen.text_right(string.format("VERB:%.0f%%**", verb_mix * 100))
-  end
-  
-  if alt then
-    screen.level(5)
-    screen.move(64, 58)
-    screen.text_center(string.format("TIME:%.1fs SIZE:%.1f", verb_time, verb_size))
   end
   
   screen.update()
