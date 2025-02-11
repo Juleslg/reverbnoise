@@ -26,7 +26,7 @@ local verb_mod_depth = 0.1
 local verb_mod_freq = 2.0
 
 -- UI state
-local alt = false
+local alt = falsee
 local screen_dirty = true
 local wave_points = {}
 local wave_phase = 0
