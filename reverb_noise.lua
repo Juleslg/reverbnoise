@@ -54,9 +54,16 @@ end
 
 -- Add new state variables at the top with other state variables
 local rotation = 0
-local planet_radius = 15
-local ring_radiuses = {24, 32, 40}  -- Volume, Noise, Reverb
-local perspective_angle = 0.6  -- Controls the "tilt" of the rings
+local planet_radius = 10  -- Reduced from 15
+local ring_radiuses = {16, 22, 28}  -- Reduced from {24, 32, 40}
+local perspective_angle = 0.6
+
+-- Text display positions
+local text_x = 15
+local text_y_start = 25
+local text_spacing = 12
+local bar_width = 20
+local bar_height = 2
 
 function calculate_ellipse_points(radius, rotation, num_points)
   local points = {}
@@ -175,9 +182,9 @@ function update_display()
     jitter_points[i] = (math.random() - 0.5) * jitter_amount
   end
   
-  -- Update rain (when verb_mix > 2.0)
-  if verb_mix > 2.0 then
-    local rain_intensity = (verb_mix - 2.0) * MAX_DROPS / 4
+  -- Update rain (when verb_mix > 1.0) - Changed from 2.0
+  if verb_mix > 1.0 then
+    local rain_intensity = (verb_mix - 1.0) * MAX_DROPS / 5  -- Adjusted scaling
     for i=1,MAX_DROPS do
       if raindrops[i] then
         -- Store trail with rotation
@@ -239,9 +246,13 @@ end
 function redraw()
   screen.clear()
   
+  -- Center the planet and rings more to the right
+  local center_x = 85  -- Moved from 64
+  local center_y = 32
+  
   -- Draw the planet
   local planet_points = 32
-  local vibration_scale = 3 + (last_input_level * 5)
+  local vibration_scale = 2 + (last_input_level * 4)  -- Reduced scale
   for i = 1, planet_points do
     local angle = (i / planet_points) * math.pi * 2
     local next_angle = ((i + 1) / planet_points) * math.pi * 2
@@ -262,53 +273,78 @@ function redraw()
     local ry2 = x2 * math.sin(rotation) + y2 * math.cos(rotation)
     
     screen.level(15)
-    screen.move(rx1 + 64, ry1 + 32)
-    screen.line(rx2 + 64, ry2 + 32)
+    screen.move(rx1 + center_x, ry1 + center_y)
+    screen.line(rx2 + center_x, ry2 + center_y)
     screen.stroke()
   end
   
   -- Draw the rings with varying brightness based on their values
   -- Volume ring
-  local volume_points = calculate_ellipse_points(ring_radiuses[1], rotation, 64)
+  local volume_points = calculate_ellipse_points(ring_radiuses[1], rotation, 48)  -- Reduced points
   screen.level(math.floor(amp * 15))
   for i = 1, #volume_points - 1 do
-    screen.move(volume_points[i].x, volume_points[i].y)
-    screen.line(volume_points[i + 1].x, volume_points[i + 1].y)
+    screen.move(volume_points[i].x - 64 + center_x, volume_points[i].y)
+    screen.line(volume_points[i + 1].x - 64 + center_x, volume_points[i + 1].y)
   end
   screen.stroke()
   
   -- Noise ring
-  local noise_points = calculate_ellipse_points(ring_radiuses[2], rotation, 64)
+  local noise_points = calculate_ellipse_points(ring_radiuses[2], rotation, 48)
   screen.level(math.floor(noise * 15))
   for i = 1, #noise_points - 1 do
-    screen.move(noise_points[i].x, noise_points[i].y)
-    screen.line(noise_points[i + 1].x, noise_points[i + 1].y)
+    screen.move(noise_points[i].x - 64 + center_x, noise_points[i].y)
+    screen.line(noise_points[i + 1].x - 64 + center_x, noise_points[i + 1].y)
   end
   screen.stroke()
   
-  -- Reverb ring (with potential crystalline effect)
-  local reverb_points = calculate_ellipse_points(ring_radiuses[3], rotation, 64)
-  local reverb_brightness = math.floor(verb_mix * 15 / 6)  -- Scale for 600% range
-  if verb_mix > 2.0 then
+  -- Reverb ring
+  local reverb_points = calculate_ellipse_points(ring_radiuses[3], rotation, 48)
+  local reverb_brightness = math.floor(verb_mix * 15 / 6)
+  if verb_mix > 1.0 then
     screen.level(reverb_brightness + math.floor(math.sin(wave_phase * 8) * 3))
   else
     screen.level(reverb_brightness)
   end
   for i = 1, #reverb_points - 1 do
-    screen.move(reverb_points[i].x, reverb_points[i].y)
-    screen.line(reverb_points[i + 1].x, reverb_points[i + 1].y)
+    screen.move(reverb_points[i].x - 64 + center_x, reverb_points[i].y)
+    screen.line(reverb_points[i + 1].x - 64 + center_x, reverb_points[i + 1].y)
   end
   screen.stroke()
   
-  -- Draw rain when verb_mix > 2.0
-  if verb_mix > 2.0 then
+  -- Draw text and value bars on the left
+  screen.level(8)
+  -- REV
+  screen.move(text_x, text_y_start)
+  screen.text("REV")
+  screen.level(15)
+  screen.rect(text_x, text_y_start - 8, bar_width * (verb_mix / 6), bar_height)
+  screen.fill()
+  
+  -- VOL
+  screen.level(8)
+  screen.move(text_x, text_y_start + text_spacing)
+  screen.text("VOL")
+  screen.level(15)
+  screen.rect(text_x, text_y_start + text_spacing - 8, bar_width * (amp / 2), bar_height)
+  screen.fill()
+  
+  -- NOI
+  screen.level(8)
+  screen.move(text_x, text_y_start + text_spacing * 2)
+  screen.text("NOI")
+  screen.level(15)
+  screen.rect(text_x, text_y_start + text_spacing * 2 - 8, bar_width * noise, bar_height)
+  screen.fill()
+  
+  -- Draw rain when verb_mix > 1.0
+  if verb_mix > 1.0 then
     for _, drop in pairs(raindrops) do
       if drop then
         for i, pos in ipairs(drop.trail) do
           local trail_brightness = math.floor(drop.brightness * (1 - i/TRAIL_LENGTH))
           screen.level(trail_brightness)
-          screen.move(pos.x, pos.y)
-          screen.line(pos.x, pos.y + drop.length)
+          screen.move(pos.x - 64 + center_x, pos.y)
+          screen.line(pos.x - 64 + center_x, pos.y + drop.length)
           screen.stroke()
         end
       end
