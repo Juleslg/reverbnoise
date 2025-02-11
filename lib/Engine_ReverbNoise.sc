@@ -54,23 +54,23 @@ Engine_ReverbNoise : CroneEngine {
                 var extended_size = Select.kr(verb_mix > 2, [
                     Select.kr(verb_mix > 1, [
                         verb_size,
-                        verb_size * (1 + ((verb_mix - 1) * 4))  // Double the growth
+                        verb_size * (1 + ((verb_mix - 1) * 4))
                     ]),
-                    verb_size * (5 + ((verb_mix - 2) * 8))  // Even more extreme growth
+                    verb_size * (5 + ((verb_mix - 2) * 8))
                 ]);
 
                 var extended_time = Select.kr(verb_mix > 2, [
                     Select.kr(verb_mix > 1, [
                         verb_time,
-                        verb_time * (1 + ((verb_mix - 1) * 6))  // Double the time extension
+                        verb_time * (1 + ((verb_mix - 1) * 6))
                     ]),
-                    verb_time * (8 + ((verb_mix - 2) * 10))  // Even more extreme time
+                    verb_time * (8 + ((verb_mix - 2) * 10))
                 ]);
 
                 // Crystalline effect with increased intensity
                 var shimmer_amount = Select.kr(verb_mix > 2, [
-                    verb_mix > 1 * (verb_mix - 1),  // Double shimmer
-                    (verb_mix - 1) * 3  // Triple shimmer above 200%
+                    verb_mix > 1 * (verb_mix - 1),
+                    (verb_mix - 1) * 3
                 ]);
                 
                 var shimmer = PitchShift.ar(mixed, 0.2, 
@@ -80,14 +80,14 @@ Engine_ReverbNoise : CroneEngine {
                 
                 var bright_filter = BHiShelf.ar(mixed, 2000, 1, 
                     Select.kr(verb_mix > 2, [
-                        Select.kr(verb_mix > 1, [0, (verb_mix - 1) * 24]),  // Double brightness
-                        (verb_mix - 1) * 48  // Quadruple brightness
+                        Select.kr(verb_mix > 1, [0, (verb_mix - 1) * 24]),
+                        (verb_mix - 1) * 48
                     ])
                 );
 
                 var reverb_input = Select.ar(verb_mix > 1, [
                     mixed,
-                    (mixed * 0.6) + (shimmer * 0.3) + (bright_filter * 0.1)  // More shimmer
+                    (mixed * 0.6) + (shimmer * 0.3) + (bright_filter * 0.1)
                 ]);
                 
                 var reverb = FreeVerb.ar(
@@ -96,7 +96,7 @@ Engine_ReverbNoise : CroneEngine {
                     room: extended_size,
                     damp: Select.kr(verb_mix > 2, [
                         Select.kr(verb_mix > 1, [verb_damp, verb_damp * 0.25]),
-                        verb_damp * 0.1  // Even less damping
+                        verb_damp * 0.1
                     ])
                 );
 
@@ -110,7 +110,7 @@ Engine_ReverbNoise : CroneEngine {
                     ]),
                     sig + (PitchShift.ar(sig, 0.2, 2.0, 0.01, 0.1) * (verb_mix - 1)) +
                     (PitchShift.ar(sig, 0.2, 3.0, 0.01, 0.1) * (verb_mix - 2)) +
-                    (PitchShift.ar(sig, 0.2, 4.0, 0.01, 0.1) * (verb_mix - 2))  // Additional octave up
+                    (PitchShift.ar(sig, 0.2, 4.0, 0.01, 0.1) * (verb_mix - 2))
                 ]);
 
                 // Final dry/wet mix
@@ -120,14 +120,14 @@ Engine_ReverbNoise : CroneEngine {
             }).add;
         }, {
             SynthDef(\reverbNoise, {
-                arg in, out, amp=1.0, noise_level=0.0,
+                arg in, out, dry_wet=0.5, noise_level=0.0,
                 verb_mix=0.0, verb_time=2.0,
                 verb_damp=0.0, verb_size=1.0,
                 verb_diff=0.707, verb_mod_depth=0.1,
                 verb_mod_freq=2.0;
 
                 var input = SoundIn.ar([0, 1]);
-                var inputAmp = Amplitude.kr(Mix(input), 0.05, 0.3); // Slower tracking for smoother response
+                var inputAmp = Amplitude.kr(Mix(input), 0.05, 0.3);
                 
                 // Create multiple layers of filtered noise
                 var noise1 = LPF.ar(WhiteNoise.ar(), 2000 + (inputAmp * 2000));
@@ -159,19 +159,43 @@ Engine_ReverbNoise : CroneEngine {
                     noiseSum + 
                     (saturated * 0.3)
                 );
-                
+
+                // Extended reverb processing for >100% and >200%
+                var extended_size = Select.kr(verb_mix > 2, [
+                    Select.kr(verb_mix > 1, [
+                        verb_size,
+                        verb_size * (1 + ((verb_mix - 1) * 4))
+                    ]),
+                    verb_size * (5 + ((verb_mix - 2) * 8))
+                ]);
+
+                var extended_time = Select.kr(verb_mix > 2, [
+                    Select.kr(verb_mix > 1, [
+                        verb_time,
+                        verb_time * (1 + ((verb_mix - 1) * 6))
+                    ]),
+                    verb_time * (8 + ((verb_mix - 2) * 10))
+                ]);
+
                 var reverb = JPverb.ar(
                     mixed,
-                    t60: verb_time,
-                    damp: verb_damp,
-                    size: verb_size,
+                    t60: extended_time,
+                    damp: Select.kr(verb_mix > 2, [
+                        Select.kr(verb_mix > 1, [verb_damp, verb_damp * 0.25]),
+                        verb_damp * 0.1
+                    ]),
+                    size: extended_size,
                     earlyDiff: verb_diff,
-                    modDepth: verb_mod_depth,
+                    modDepth: verb_mod_depth * (1 + verb_mix),
                     modFreq: verb_mod_freq
                 );
 
                 var sig = XFade2.ar(mixed, reverb, verb_mix * 2 - 1);
-                Out.ar(out, sig * amp);
+
+                // Final dry/wet mix
+                var dry = input;
+                var wet = sig;
+                Out.ar(out, XFade2.ar(dry, wet, dry_wet * 2 - 1));
             }).add;
         });
 
@@ -179,11 +203,11 @@ Engine_ReverbNoise : CroneEngine {
 
         synth = Synth.new(\reverbNoise, [
             \out, context.out_b.index,
-            \amp, 1.0
+            \dry_wet, 0.5
         ], context.xg);
 
-        this.addCommand("amp", "f", { arg msg;
-            synth.set(\amp, msg[1]);
+        this.addCommand("dry_wet", "f", { arg msg;
+            synth.set(\dry_wet, msg[1]);
         });
 
         this.addCommand("noise", "f", { arg msg;
