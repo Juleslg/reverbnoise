@@ -33,23 +33,41 @@ local wave_phase = 0
 local jitter_points = {}
 local last_input_level = 0
 
--- Rain state
-local raindrops = {}
-local MAX_DROPS = 40
-local rain_trails = {}
+-- Rain state for each parameter
+local volume_drops = {}
+local noise_drops = {}
+local reverb_drops = {}
+local MAX_DROPS = 30
 local TRAIL_LENGTH = 6
 
--- Raindrop class
+-- Raindrop class with different styles
 local Raindrop = {}
-function Raindrop.new(x)
-  return {
-    x = x or math.random(1, 128),
+function Raindrop.new(style)
+  local drop = {
+    x = math.random(1, 128),
     y = math.random(-10, 0),
-    speed = math.random(3, 8) / 10,  -- Slower speed
-    length = math.random(2, 4),
-    trail = {},  -- Store previous positions
-    brightness = math.random(10, 15)  -- Random brightness for variation
+    trail = {},
+    style = style
   }
+  
+  -- Different characteristics based on style
+  if style == "volume" then
+    drop.speed = math.random(4, 7) / 10
+    drop.length = math.random(3, 5)
+    drop.brightness = math.random(12, 15)
+  elseif style == "noise" then
+    drop.speed = math.random(2, 4) / 10
+    drop.length = math.random(1, 2)
+    drop.brightness = math.random(8, 12)
+    drop.jitter = math.random() * 0.5
+  else -- reverb
+    drop.speed = math.random(3, 5) / 10
+    drop.length = math.random(4, 6)
+    drop.brightness = math.random(10, 13)
+    drop.width = math.random(2, 3)
+  end
+  
+  return drop
 end
 
 -- Add new state variables at the top with other state variables
@@ -89,7 +107,9 @@ function init()
   
   -- Initialize raindrops
   for i=1,MAX_DROPS do
-    raindrops[i] = Raindrop.new()
+    volume_drops[i] = Raindrop.new("volume")
+    noise_drops[i] = Raindrop.new("noise")
+    reverb_drops[i] = Raindrop.new("reverb")
   end
   
   -- Initialize jitter points
@@ -131,7 +151,7 @@ function init()
     engine.noise(noise)
   end)
   
-  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 6.0, 'lin', 0, 0.0, ""))  -- Extended to 600%
+  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 3.0, 'lin', 0, 0.0, ""))  -- Limited to 300%
   params:set_action("verb_mix", function(x)
     verb_mix = x
     engine.verb_mix(verb_mix)
@@ -171,43 +191,83 @@ function update_display()
   -- Update rotation
   rotation = (rotation + 0.01) % (math.pi * 2)
   
-  -- Update wave phase for planet vibration
+  -- Update wave phase for effects
   wave_phase = (wave_phase + 0.02) % (math.pi * 2)
   
-  -- Update jitter based on input level
-  local jitter_amount = last_input_level * 5
-  
-  -- Generate new jitter points for planet surface
-  for i=1,128 do
-    jitter_points[i] = (math.random() - 0.5) * jitter_amount
-  end
-  
-  -- Update rain (when verb_mix > 1.0) - Changed from 2.0
-  if verb_mix > 1.0 then
-    local rain_intensity = (verb_mix - 1.0) * MAX_DROPS / 5  -- Adjusted scaling
+  -- Update volume rain
+  if amp > 0.01 then
+    local vol_intensity = math.floor(amp * MAX_DROPS / 2)
     for i=1,MAX_DROPS do
-      if raindrops[i] then
-        -- Store trail with rotation
-        local rotated_x = raindrops[i].x * math.cos(rotation) - raindrops[i].y * math.sin(rotation)
-        table.insert(raindrops[i].trail, 1, {x = rotated_x, y = raindrops[i].y})
-        if #raindrops[i].trail > TRAIL_LENGTH then
-          table.remove(raindrops[i].trail)
+      if volume_drops[i] then
+        local rotated_x = volume_drops[i].x * math.cos(rotation) - volume_drops[i].y * math.sin(rotation)
+        table.insert(volume_drops[i].trail, 1, {x = rotated_x, y = volume_drops[i].y})
+        if #volume_drops[i].trail > TRAIL_LENGTH then
+          table.remove(volume_drops[i].trail)
         end
         
-        raindrops[i].y = raindrops[i].y + raindrops[i].speed
-        if raindrops[i].y > 64 then
-          if i <= rain_intensity then
-            raindrops[i] = Raindrop.new()
+        volume_drops[i].y = volume_drops[i].y + volume_drops[i].speed
+        if volume_drops[i].y > 64 then
+          if i <= vol_intensity then
+            volume_drops[i] = Raindrop.new("volume")
           else
-            raindrops[i] = nil
+            volume_drops[i] = nil
           end
         end
-      elseif i <= rain_intensity then
-        raindrops[i] = Raindrop.new()
+      elseif i <= vol_intensity then
+        volume_drops[i] = Raindrop.new("volume")
       end
     end
-  else
-    raindrops = {}
+  end
+  
+  -- Update noise rain
+  if noise > 0.01 then
+    local noise_intensity = math.floor(noise * MAX_DROPS)
+    for i=1,MAX_DROPS do
+      if noise_drops[i] then
+        local jitter_x = noise_drops[i].x + math.sin(wave_phase * 5 + i) * noise_drops[i].jitter
+        local rotated_x = jitter_x * math.cos(rotation) - noise_drops[i].y * math.sin(rotation)
+        table.insert(noise_drops[i].trail, 1, {x = rotated_x, y = noise_drops[i].y})
+        if #noise_drops[i].trail > TRAIL_LENGTH then
+          table.remove(noise_drops[i].trail)
+        end
+        
+        noise_drops[i].y = noise_drops[i].y + noise_drops[i].speed
+        if noise_drops[i].y > 64 then
+          if i <= noise_intensity then
+            noise_drops[i] = Raindrop.new("noise")
+          else
+            noise_drops[i] = nil
+          end
+        end
+      elseif i <= noise_intensity then
+        noise_drops[i] = Raindrop.new("noise")
+      end
+    end
+  end
+  
+  -- Update reverb rain
+  if verb_mix > 0.01 then
+    local reverb_intensity = math.floor(verb_mix * MAX_DROPS / 3)
+    for i=1,MAX_DROPS do
+      if reverb_drops[i] then
+        local rotated_x = reverb_drops[i].x * math.cos(rotation) - reverb_drops[i].y * math.sin(rotation)
+        table.insert(reverb_drops[i].trail, 1, {x = rotated_x, y = reverb_drops[i].y})
+        if #reverb_drops[i].trail > TRAIL_LENGTH then
+          table.remove(reverb_drops[i].trail)
+        end
+        
+        reverb_drops[i].y = reverb_drops[i].y + reverb_drops[i].speed
+        if reverb_drops[i].y > 64 then
+          if i <= reverb_intensity then
+            reverb_drops[i] = Raindrop.new("reverb")
+          else
+            reverb_drops[i] = nil
+          end
+        end
+      elseif i <= reverb_intensity then
+        reverb_drops[i] = Raindrop.new("reverb")
+      end
+    end
   end
   
   screen_dirty = true
@@ -246,78 +306,13 @@ end
 function redraw()
   screen.clear()
   
-  -- Center the planet and rings more to the right
-  local center_x = 85  -- Moved from 64
-  local center_y = 32
-  
-  -- Draw the planet
-  local planet_points = 32
-  local vibration_scale = 2 + (last_input_level * 4)  -- Reduced scale
-  for i = 1, planet_points do
-    local angle = (i / planet_points) * math.pi * 2
-    local next_angle = ((i + 1) / planet_points) * math.pi * 2
-    
-    -- Add vibration to radius
-    local radius_mod = math.sin(wave_phase + angle * 3) * vibration_scale
-    local next_radius_mod = math.sin(wave_phase + next_angle * 3) * vibration_scale
-    
-    local x1 = math.cos(angle) * (planet_radius + radius_mod)
-    local y1 = math.sin(angle) * (planet_radius + radius_mod) * perspective_angle
-    local x2 = math.cos(next_angle) * (planet_radius + next_radius_mod)
-    local y2 = math.sin(next_angle) * (planet_radius + next_radius_mod) * perspective_angle
-    
-    -- Rotate points
-    local rx1 = x1 * math.cos(rotation) - y1 * math.sin(rotation)
-    local ry1 = x1 * math.sin(rotation) + y1 * math.cos(rotation)
-    local rx2 = x2 * math.cos(rotation) - y2 * math.sin(rotation)
-    local ry2 = x2 * math.sin(rotation) + y2 * math.cos(rotation)
-    
-    screen.level(15)
-    screen.move(rx1 + center_x, ry1 + center_y)
-    screen.line(rx2 + center_x, ry2 + center_y)
-    screen.stroke()
-  end
-  
-  -- Draw the rings with varying brightness based on their values
-  -- Volume ring
-  local volume_points = calculate_ellipse_points(ring_radiuses[1], rotation, 48)  -- Reduced points
-  screen.level(math.floor(amp * 15))
-  for i = 1, #volume_points - 1 do
-    screen.move(volume_points[i].x - 64 + center_x, volume_points[i].y)
-    screen.line(volume_points[i + 1].x - 64 + center_x, volume_points[i + 1].y)
-  end
-  screen.stroke()
-  
-  -- Noise ring
-  local noise_points = calculate_ellipse_points(ring_radiuses[2], rotation, 48)
-  screen.level(math.floor(noise * 15))
-  for i = 1, #noise_points - 1 do
-    screen.move(noise_points[i].x - 64 + center_x, noise_points[i].y)
-    screen.line(noise_points[i + 1].x - 64 + center_x, noise_points[i + 1].y)
-  end
-  screen.stroke()
-  
-  -- Reverb ring
-  local reverb_points = calculate_ellipse_points(ring_radiuses[3], rotation, 48)
-  local reverb_brightness = math.floor(verb_mix * 15 / 6)
-  if verb_mix > 1.0 then
-    screen.level(reverb_brightness + math.floor(math.sin(wave_phase * 8) * 3))
-  else
-    screen.level(reverb_brightness)
-  end
-  for i = 1, #reverb_points - 1 do
-    screen.move(reverb_points[i].x - 64 + center_x, reverb_points[i].y)
-    screen.line(reverb_points[i + 1].x - 64 + center_x, reverb_points[i + 1].y)
-  end
-  screen.stroke()
-  
   -- Draw text and value bars on the left
   screen.level(8)
   -- REV
   screen.move(text_x, text_y_start)
   screen.text("REV")
   screen.level(15)
-  screen.rect(text_x, text_y_start - 8, bar_width * (verb_mix / 6), bar_height)
+  screen.rect(text_x, text_y_start - 8, bar_width * (verb_mix / 3), bar_height)
   screen.fill()
   
   -- VOL
@@ -336,17 +331,38 @@ function redraw()
   screen.rect(text_x, text_y_start + text_spacing * 2 - 8, bar_width * noise, bar_height)
   screen.fill()
   
-  -- Draw rain when verb_mix > 1.0
-  if verb_mix > 1.0 then
-    for _, drop in pairs(raindrops) do
-      if drop then
-        for i, pos in ipairs(drop.trail) do
-          local trail_brightness = math.floor(drop.brightness * (1 - i/TRAIL_LENGTH))
-          screen.level(trail_brightness)
-          screen.move(pos.x - 64 + center_x, pos.y)
-          screen.line(pos.x - 64 + center_x, pos.y + drop.length)
-          screen.stroke()
-        end
+  -- Draw volume rain (straight lines)
+  for _, drop in pairs(volume_drops) do
+    for i, pos in ipairs(drop.trail) do
+      local trail_brightness = math.floor(drop.brightness * (1 - i/TRAIL_LENGTH))
+      screen.level(trail_brightness)
+      screen.move(pos.x, pos.y)
+      screen.line(pos.x, pos.y + drop.length)
+      screen.stroke()
+    end
+  end
+  
+  -- Draw noise rain (jittery, shorter)
+  for _, drop in pairs(noise_drops) do
+    for i, pos in ipairs(drop.trail) do
+      local trail_brightness = math.floor(drop.brightness * (1 - i/TRAIL_LENGTH))
+      screen.level(trail_brightness)
+      screen.move(pos.x, pos.y)
+      screen.line(pos.x + math.sin(wave_phase * 10) * drop.jitter, pos.y + drop.length)
+      screen.stroke()
+    end
+  end
+  
+  -- Draw reverb rain (wider, fading)
+  for _, drop in pairs(reverb_drops) do
+    for i, pos in ipairs(drop.trail) do
+      local trail_brightness = math.floor(drop.brightness * (1 - i/TRAIL_LENGTH))
+      screen.level(trail_brightness)
+      -- Draw multiple lines for width
+      for w = 0, drop.width do
+        screen.move(pos.x + w - drop.width/2, pos.y)
+        screen.line(pos.x + w - drop.width/2, pos.y + drop.length)
+        screen.stroke()
       end
     end
   end
