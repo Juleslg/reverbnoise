@@ -2,7 +2,7 @@
 -- Live audio processing with
 -- reverb and noise blend
 --
--- E1 - main volume
+-- E1 - dry/wet mix
 -- E2 - noise level
 -- E3 - reverb mix
 -- K2 + E2 - reverb time
@@ -16,7 +16,7 @@ local UI = require 'ui'
 local util = require 'util'
 
 -- State variables
-local amp = 1.0
+local dry_wet = 0.5
 local noise = 0.0
 local verb_mix = 0.0
 local verb_time = 2.0
@@ -36,6 +36,8 @@ local last_input_level = 0
 -- Rain state
 local raindrops = {}
 local MAX_DROPS = 40
+local rain_trails = {}
+local TRAIL_LENGTH = 6
 
 -- Raindrop class
 local Raindrop = {}
@@ -43,8 +45,10 @@ function Raindrop.new(x)
   return {
     x = x or math.random(1, 128),
     y = math.random(-10, 0),
-    speed = math.random(10, 20) / 10,
-    length = math.random(2, 4)
+    speed = math.random(3, 8) / 10,  -- Slower speed
+    length = math.random(2, 4),
+    trail = {},  -- Store previous positions
+    brightness = math.random(10, 15)  -- Random brightness for variation
   }
 end
 
@@ -72,10 +76,10 @@ function init()
   poll:start()
   
   -- Parameters
-  params:add_control("amp", "Volume", controlspec.new(0, 2.0, 'lin', 0, 1.0, ""))
-  params:set_action("amp", function(x) 
-    amp = x
-    engine.amp(amp)
+  params:add_control("dry_wet", "Dry/Wet", controlspec.new(0, 1.0, 'lin', 0, 0.5, ""))
+  params:set_action("dry_wet", function(x) 
+    dry_wet = x
+    engine.dry_wet(dry_wet)
   end)
   
   params:add_control("noise", "Noise", controlspec.new(0, 1.0, 'lin', 0, 0.0, ""))
@@ -84,7 +88,7 @@ function init()
     engine.noise(noise)
   end)
   
-  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 3.0, 'lin', 0, 0.0, ""))  -- Extended to 300%
+  params:add_control("verb_mix", "Verb Mix", controlspec.new(0, 6.0, 'lin', 0, 0.0, ""))  -- Extended to 600%
   params:set_action("verb_mix", function(x)
     verb_mix = x
     engine.verb_mix(verb_mix)
@@ -157,10 +161,16 @@ function update_display()
   
   -- Update rain (when verb_mix > 2.0)
   if verb_mix > 2.0 then
-    local rain_intensity = (verb_mix - 2.0) * MAX_DROPS
+    local rain_intensity = (verb_mix - 2.0) * MAX_DROPS / 4  -- Adjusted for 600% range
     for i=1,MAX_DROPS do
       -- Update existing raindrops
       if raindrops[i] then
+        -- Store trail
+        table.insert(raindrops[i].trail, 1, {x = raindrops[i].x, y = raindrops[i].y})
+        if #raindrops[i].trail > TRAIL_LENGTH then
+          table.remove(raindrops[i].trail)
+        end
+        
         raindrops[i].y = raindrops[i].y + raindrops[i].speed
         -- Reset raindrop if it's off screen
         if raindrops[i].y > 64 then
@@ -196,7 +206,7 @@ end
 
 function enc(n,d)
   if n == 1 then
-    params:delta("amp", d)
+    params:delta("dry_wet", d)
   elseif n == 2 then
     if alt then
       params:delta("verb_time", d)
@@ -231,9 +241,18 @@ function redraw()
   
   -- Draw rain when verb_mix > 2.0
   if verb_mix > 2.0 then
-    screen.level(math.floor(15 + math.sin(wave_phase * 4) * 3))
     for _, drop in pairs(raindrops) do
       if drop then
+        -- Draw trails with decreasing brightness
+        for i, pos in ipairs(drop.trail) do
+          local trail_brightness = math.floor(drop.brightness * (1 - i/TRAIL_LENGTH))
+          screen.level(trail_brightness)
+          screen.move(pos.x, pos.y)
+          screen.line(pos.x, pos.y + drop.length)
+          screen.stroke()
+        end
+        -- Draw current raindrop
+        screen.level(drop.brightness)
         screen.move(drop.x, drop.y)
         screen.line(drop.x, drop.y + drop.length)
         screen.stroke()
@@ -244,7 +263,7 @@ function redraw()
   -- Draw parameter values with extended range
   screen.level(15)
   screen.move(5, 50)
-  screen.text(string.format("VOL:%.0f%%", amp * 100))
+  screen.text(string.format("D/W:%.0f%%", dry_wet * 100))
   
   screen.move(64, 50)
   screen.text_center(string.format("NOISE:%.0f%%", noise * 100))

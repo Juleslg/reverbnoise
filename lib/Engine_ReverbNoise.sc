@@ -10,7 +10,7 @@ Engine_ReverbNoise : CroneEngine {
         if(not('JPverb'.asClass.notNil), {
             "WARNING: JPverb not found, using FreeVerb instead".postln;
             SynthDef(\reverbNoise, {
-                arg in, out, amp=1.0, noise_level=0.0,
+                arg in, out, dry_wet=0.5, noise_level=0.0,
                 verb_mix=0.0, verb_time=2.0,
                 verb_damp=0.0, verb_size=1.0,
                 verb_diff=0.707, verb_mod_depth=0.1,
@@ -54,23 +54,23 @@ Engine_ReverbNoise : CroneEngine {
                 var extended_size = Select.kr(verb_mix > 2, [
                     Select.kr(verb_mix > 1, [
                         verb_size,
-                        verb_size * (1 + ((verb_mix - 1) * 2))
+                        verb_size * (1 + ((verb_mix - 1) * 4))  // Double the growth
                     ]),
-                    verb_size * (3 + ((verb_mix - 2) * 4)) // Triple size and continue growing
+                    verb_size * (5 + ((verb_mix - 2) * 8))  // Even more extreme growth
                 ]);
 
                 var extended_time = Select.kr(verb_mix > 2, [
                     Select.kr(verb_mix > 1, [
                         verb_time,
-                        verb_time * (1 + ((verb_mix - 1) * 3))
+                        verb_time * (1 + ((verb_mix - 1) * 6))  // Double the time extension
                     ]),
-                    verb_time * (4 + ((verb_mix - 2) * 5)) // Quadruple time and continue growing
+                    verb_time * (8 + ((verb_mix - 2) * 10))  // Even more extreme time
                 ]);
 
-                // Crystalline effect with increased intensity above 200%
+                // Crystalline effect with increased intensity
                 var shimmer_amount = Select.kr(verb_mix > 2, [
-                    verb_mix > 1 * (verb_mix - 1) * 0.5,
-                    (verb_mix - 1) * 1.5  // More intense shimmer
+                    verb_mix > 1 * (verb_mix - 1),  // Double shimmer
+                    (verb_mix - 1) * 3  // Triple shimmer above 200%
                 ]);
                 
                 var shimmer = PitchShift.ar(mixed, 0.2, 
@@ -80,14 +80,14 @@ Engine_ReverbNoise : CroneEngine {
                 
                 var bright_filter = BHiShelf.ar(mixed, 2000, 1, 
                     Select.kr(verb_mix > 2, [
-                        Select.kr(verb_mix > 1, [0, (verb_mix - 1) * 12]),
-                        (verb_mix - 1) * 24  // Double brightness boost
+                        Select.kr(verb_mix > 1, [0, (verb_mix - 1) * 24]),  // Double brightness
+                        (verb_mix - 1) * 48  // Quadruple brightness
                     ])
                 );
 
                 var reverb_input = Select.ar(verb_mix > 1, [
                     mixed,
-                    (mixed * 0.7) + (shimmer * 0.2) + (bright_filter * 0.1)
+                    (mixed * 0.6) + (shimmer * 0.3) + (bright_filter * 0.1)  // More shimmer
                 ]);
                 
                 var reverb = FreeVerb.ar(
@@ -95,8 +95,8 @@ Engine_ReverbNoise : CroneEngine {
                     mix: 1.0,
                     room: extended_size,
                     damp: Select.kr(verb_mix > 2, [
-                        Select.kr(verb_mix > 1, [verb_damp, verb_damp * 0.5]),
-                        verb_damp * 0.25  // Even less damping for extreme reverb
+                        Select.kr(verb_mix > 1, [verb_damp, verb_damp * 0.25]),
+                        verb_damp * 0.1  // Even less damping
                     ])
                 );
 
@@ -109,10 +109,14 @@ Engine_ReverbNoise : CroneEngine {
                         sig + (PitchShift.ar(sig, 0.2, 1.5, 0.01, 0.1) * (verb_mix - 1))
                     ]),
                     sig + (PitchShift.ar(sig, 0.2, 2.0, 0.01, 0.1) * (verb_mix - 1)) +
-                    (PitchShift.ar(sig, 0.2, 3.0, 0.01, 0.1) * (verb_mix - 2))
+                    (PitchShift.ar(sig, 0.2, 3.0, 0.01, 0.1) * (verb_mix - 2)) +
+                    (PitchShift.ar(sig, 0.2, 4.0, 0.01, 0.1) * (verb_mix - 2))  // Additional octave up
                 ]);
 
-                Out.ar(out, sig * amp);
+                // Final dry/wet mix
+                var dry = input;
+                var wet = sig;
+                Out.ar(out, XFade2.ar(dry, wet, dry_wet * 2 - 1));
             }).add;
         }, {
             SynthDef(\reverbNoise, {
